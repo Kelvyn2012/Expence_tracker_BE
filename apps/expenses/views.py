@@ -57,10 +57,16 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             count=Count('id')
         ).order_by('-total')
 
+        # Group by date for timeline
+        timeline = queryset.values('expense_date').annotate(
+            total=Sum('amount')
+        ).order_by('expense_date')
+
         return Response({
             "total_spend": total_spend,
-            "currency": "USD", # Simplified, assuming single currency or main currency
+            "currency": "USD", 
             "breakdown": by_category,
+            "timeline": timeline,
             "count": queryset.count()
         })
 
