@@ -11,7 +11,9 @@ from rest_framework.permissions import IsAuthenticated
 from apps.common.permissions import IsEmailVerified
 from .models import Expense
 from .serializers import ExpenseSerializer
+from .serializers import ExpenseSerializer
 from .filters import ExpenseFilter
+from apps.budgets.models import Budget
 
 class ExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = ExpenseSerializer
@@ -52,10 +54,38 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         total_spend = queryset.aggregate(total=Sum('amount'))['total'] or 0
         
         # Group by category
-        by_category = queryset.values('category').annotate(
+        by_category_qs = queryset.values('category').annotate(
             total=Sum('amount'),
             count=Count('id')
         ).order_by('-total')
+
+        # Get budgets
+        budgets = Budget.objects.filter(user=request.user)
+        budget_map = {b.category: b.amount for b in budgets}
+
+        # Merge expenses and budgets
+        breakdown = []
+        processed_categories = set()
+
+        for item in by_category_qs:
+            cat = item['category']
+            if not cat: continue # Skip None category if any
+            processed_categories.add(cat)
+            item['budget'] = budget_map.get(cat, 0)
+            breakdown.append(item)
+        
+        # Add categories with budgets but no expenses
+        for cat, amount in budget_map.items():
+            if cat not in processed_categories:
+                breakdown.append({
+                    'category': cat,
+                    'total': 0,
+                    'count': 0,
+                    'budget': amount
+                })
+        
+        # Sort by total spending desc, then category
+        breakdown.sort(key=lambda x: (-x['total'], x['category']))
 
         # Group by date for timeline
         timeline = queryset.values('expense_date').annotate(
@@ -65,7 +95,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         return Response({
             "total_spend": total_spend,
             "currency": "USD", 
-            "breakdown": by_category,
+            "breakdown": breakdown,
             "timeline": timeline,
             "count": queryset.count()
         })
