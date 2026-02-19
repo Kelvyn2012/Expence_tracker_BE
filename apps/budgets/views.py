@@ -7,6 +7,7 @@ from .serializers import BudgetSerializer
 class BudgetViewSet(viewsets.ModelViewSet):
     serializer_class = BudgetSerializer
     permission_classes = [IsAuthenticated, IsEmailVerified]
+    pagination_class = None
     
     def get_queryset(self):
         return Budget.objects.filter(user=self.request.user)
